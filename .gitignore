@@ -1,0 +1,14 @@
+# Environment variables
+.env
+
+# MacOS
+.DS_Store
+
+# Node
+node_modules
+
+# Dapptools
+out/
+
+# Foundry
+cache/
