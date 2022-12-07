@@ -7,6 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// https://github.com/sushiswap/sushiswap/blob/master/protocols/furo/contracts/FuroStreamRouter.sol
 interface IFuroStreamRouter {
@@ -26,7 +27,7 @@ error Conversion_Expired();
 
 /// converts a token to another that's streamed over a fixed duration and at a fixed
 /// conversion price using FuroStream
-contract VestingConversion {
+contract VestingConversion is Ownable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
     using SafeCast for uint256;
@@ -59,7 +60,8 @@ contract VestingConversion {
         uint256 _vestingDuration,
         uint256 _conversionExpiration,
         address _tokenInBeneficiary,
-        address _furoStreamRouter
+        address _furoStreamRouter,
+        address _owner
     ) {
         tokenIn = IERC20(_tokenIn);
         tokenInDecimals = IERC20Metadata(_tokenIn).decimals();
@@ -71,6 +73,7 @@ contract VestingConversion {
         expiration = _conversionExpiration;
         beneficiary = _tokenInBeneficiary;
         router = IFuroStreamRouter(_furoStreamRouter);
+        transferOwnership(_owner);
     }
 
     function convert(address recipient, uint256 amount)
@@ -117,5 +120,9 @@ contract VestingConversion {
             amountOut,
             endTime
         );
+    }
+
+    function withdraw(uint256 amount) external onlyOwner {
+        tokenOut.safeTransfer(owner(), amount);
     }
 }
