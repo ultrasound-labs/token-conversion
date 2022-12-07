@@ -2,15 +2,11 @@
 
 pragma solidity ^0.8.0;
 
-import {
-    SafeERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {
-    IERC20Metadata
-} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import { SafeMath } from "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import { SafeCast } from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// https://github.com/sushiswap/sushiswap/blob/master/protocols/furo/contracts/FuroStreamRouter.sol
 interface IFuroStreamRouter {
@@ -25,8 +21,11 @@ interface IFuroStreamRouter {
     ) external payable returns (uint256 streamId, uint256 depositedShares);
 }
 
-/// converts a token to a FuroStream of another token at a fixed
-/// conversion price
+/// Expired conversion error
+error Conversion_Expired();
+
+/// converts a token to another that's streamed over a fixed duration and at a fixed
+/// conversion price using FuroStream
 contract VestingConversion {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
@@ -39,6 +38,7 @@ contract VestingConversion {
     uint256 public immutable rate; // the conversion rate
     uint256 public immutable rateDecimals; // decimal precision of conversion rate
     uint256 public immutable duration; // the vesting duration
+    uint256 public immutable expiration; // expiration of the conversion offer
     address public immutable beneficiary; // the beneficiary of deposited tokens
     IFuroStreamRouter public immutable router; // the Sushi FuroStreamRouter
 
@@ -57,6 +57,7 @@ contract VestingConversion {
         uint256 _conversionRate,
         uint256 _rateDecimals,
         uint256 _vestingDuration,
+        uint256 _conversionExpiration,
         address _tokenInBeneficiary,
         address _furoStreamRouter
     ) {
@@ -67,17 +68,24 @@ contract VestingConversion {
         rate = _conversionRate;
         rateDecimals = _rateDecimals;
         duration = _vestingDuration;
+        expiration = _conversionExpiration;
         beneficiary = _tokenInBeneficiary;
         router = IFuroStreamRouter(_furoStreamRouter);
     }
 
-    function convert(
-        address recipient,
-        uint256 amount
-    ) external returns (uint256 streamId, uint256 depositedShares) {
-        
+    function convert(address recipient, uint256 amount)
+        external
+        returns (uint256 streamId, uint256 depositedShares)
+    {
+        // assert conversion is not expired
+        if (block.timestamp > expiration) revert Conversion_Expired();
+
         // compute conversion parameters
-        uint256 amountOut = amount.mul(rate).div(tokenInDecimals).mul(tokenOutDecimals).div(rateDecimals);
+        uint256 amountOut = amount
+            .mul(rate)
+            .div(tokenInDecimals)
+            .mul(tokenOutDecimals)
+            .div(rateDecimals);
         uint256 startTime = block.timestamp;
         uint256 endTime = startTime.add(duration);
 
@@ -93,12 +101,13 @@ contract VestingConversion {
         // needed then this has to be implemented in the conversion contract
         (streamId, depositedShares) = router.createStream(
             recipient,
-            address(tokenOut), 
-            startTime.toUint64(), 
+            address(tokenOut),
+            startTime.toUint64(),
             endTime.toUint64(),
-            amount, 
-            false, 
-            0); // TODO: fix minShare param
+            amount,
+            false,
+            0
+        ); // TODO: fix minShare param
 
         emit Convert(
             streamId,
@@ -108,7 +117,5 @@ contract VestingConversion {
             amountOut,
             endTime
         );
-
-        return (streamId, depositedShares);
     }
 }

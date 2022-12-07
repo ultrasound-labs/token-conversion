@@ -1,9 +1,9 @@
 {
-  "name": "magnus",
-  "author": "Daniel Luca (@CleanUnicorn)",
+  "name": "vesting-conversion",
+  "author": "Nils Bundi (@nbundi)",
   "license": "Apache-2.0",
   "version": "1.0.0",
-  "description": "Smart Contract starting template",
+  "description": "Fixed conversion of one token to a stream of another token using FuroStream",
   "files": [
     "*.sol"
   ],
