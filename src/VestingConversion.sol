@@ -74,7 +74,7 @@ contract VestingConversion {
     function convert(
         address recipient,
         uint256 amount
-    ) external payable returns (uint256 streamId, uint256 depositedShares) {
+    ) external returns (uint256 streamId, uint256 depositedShares) {
         
         // compute conversion parameters
         uint256 amountOut = amount.mul(rate).div(tokenInDecimals).mul(tokenOutDecimals).div(rateDecimals);
