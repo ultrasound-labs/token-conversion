@@ -1,7 +1,7 @@
 {
   "name": "vesting-conversion",
   "author": "Nils Bundi (@nbundi)",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "version": "1.0.0",
   "description": "Fixed conversion of one token to a stream of another token using FuroStream",
   "files": [

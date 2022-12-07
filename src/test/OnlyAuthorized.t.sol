@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
 import "forge-std/Test.sol";
 
-import "./test/utils/Caller.sol";
+import "./utils/Caller.sol";
 
-import {OnlyAuthorized} from "./OnlyAuthorized.sol";
+import {OnlyAuthorized} from "../OnlyAuthorized.sol";
 
 contract OnlyAuthorizedTest is Test {
     OnlyAuthorized private oa;
