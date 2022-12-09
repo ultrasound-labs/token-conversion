@@ -6,12 +6,12 @@ import "forge-std/Test.sol";
 import "./utils/Caller.sol";
 import "./utils/tokens/TokenERC20.sol";
 
-import {VestingConversion} from "../VestingConversion.sol";
+import {FuroStreamConversion} from "../FuroStreamConversion.sol";
 
-contract VestingConversionTest is Test {
+contract FuroStreamConversionTest is Test {
     TokenERC20 private tokenIn;
     TokenERC20 private tokenOut;
-    VestingConversion private conversion;
+    FuroStreamConversion private conversion;
     uint256 private RATE_DECIMALS;
     uint256 private RATE;
     uint256 private DURATION;
@@ -21,15 +21,15 @@ contract VestingConversionTest is Test {
 
     function setUp() public {
         RATE_DECIMALS = 18;
-        RATE = (10**RATE_DECIMALS)/750;
-        DURATION = 365*86400; // 1 year
-        EXPIRATION = block.timestamp + 365*86400; // 1 year from now
+        RATE = (10**RATE_DECIMALS) / 750;
+        DURATION = 365 * 86400; // 1 year
+        EXPIRATION = block.timestamp + 365 * 86400; // 1 year from now
         tokenIn = new TokenERC20("TokenIn", "TOKI");
         tokenOut = new TokenERC20("TokenOut", "TOKO");
         owner = address(this);
         furo = address(0x1);
 
-        conversion = new VestingConversion(
+        conversion = new FuroStreamConversion(
             address(tokenIn),
             address(tokenOut),
             RATE,

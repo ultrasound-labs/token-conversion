@@ -27,7 +27,7 @@ error Conversion_Expired();
 
 /// converts a token to another that's streamed over a fixed duration and at a fixed
 /// conversion price using FuroStream
-contract VestingConversion is Ownable {
+contract FuroStreamConversion is Ownable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
     using SafeCast for uint256;
