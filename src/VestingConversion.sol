@@ -86,9 +86,9 @@ contract VestingConversion is Ownable {
         // compute conversion parameters
         uint256 amountOut = amount
             .mul(rate)
-            .div(tokenInDecimals)
-            .mul(tokenOutDecimals)
-            .div(rateDecimals);
+            .div(10**tokenInDecimals)
+            .mul(10**tokenOutDecimals)
+            .div(10**rateDecimals);
         uint256 startTime = block.timestamp;
         uint256 endTime = startTime.add(duration);
 
