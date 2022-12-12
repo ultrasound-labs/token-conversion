@@ -13,7 +13,8 @@ error Insufficient_Reserves();
 error Only_Stream_Owner();
 error Invalid_Recipient();
 
-/// converts a token to another token where the conversion price is fixed and the output token is streamed to the recipient over a fixed duration.
+/// converts a token to another token where the conversion price is fixed and the output token is streamed to the
+/// recipient over a fixed duration.
 contract StreamConversion is Ownable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
@@ -96,10 +97,7 @@ contract StreamConversion is Ownable {
     }
 
     /// Withdraws claimable BOND tokens to `recipient`
-    function claim(uint256 streamId)
-        external
-        returns (uint256 claimed)
-    {
+    function claim(uint256 streamId) external returns (uint256 claimed) {
         Stream memory stream = streams[streamId];
         return _claim(stream, streamId, stream.owner);
     }
@@ -122,17 +120,19 @@ contract StreamConversion is Ownable {
     }
 
     /// Withdraws claimable BOND tokens to `recipient`
-    function _claim(Stream memory stream, uint256 streamId, address recipient)
-        private
-        returns (uint256 claimed)
-    {
+    function _claim(
+        Stream memory stream,
+        uint256 streamId,
+        address recipient
+    ) private returns (uint256 claimed) {
         // compute claimable amount and update stream
         claimed = _claimableBalance(stream);
         stream.claimed += uint128(claimed);
         streams[streamId] = stream;
 
         // assert converter holds enough BOND tokens
-        if (IERC20(BOND).balanceOf(address(this)) < claimed) revert Insufficient_Reserves();
+        if (IERC20(BOND).balanceOf(address(this)) < claimed)
+            revert Insufficient_Reserves();
 
         // withdraw claimable amount
         IERC20(BOND).safeTransfer(recipient, claimed);

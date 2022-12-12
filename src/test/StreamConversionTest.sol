@@ -15,9 +15,7 @@ contract StreamConversionTest is Test {
     function setUp() public {
         owner = address(this);
 
-        conversion = new StreamConversion(
-            owner
-        );
+        conversion = new StreamConversion(owner);
     }
 
     function testCanChangeOwner() public {
