@@ -3,7 +3,7 @@
   "author": "Nils Bundi (@nbundi)",
   "license": "MIT",
   "version": "1.0.0",
-  "description": "Fixed conversion of one token to a stream of another token using FuroStream",
+  "description": "Fixed conversion of one token to a stream of another token",
   "files": [
     "*.sol"
   ],

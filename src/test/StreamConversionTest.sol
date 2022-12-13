@@ -6,9 +6,6 @@ import "forge-std/console.sol";
 
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
-import "./utils/Caller.sol";
-import "./utils/tokens/TokenERC20.sol";
-
 import {StreamConversion} from "../StreamConversion.sol";
 
 contract StreamConversionTest is Test {
@@ -34,17 +31,9 @@ contract StreamConversionTest is Test {
     }
 
     function test_OtherUsersCannotChangeOwner() public {
-        Caller user = new Caller();
-
-        (bool ok, ) = user.externalCall(
-            address(conversion),
-            abi.encodeWithSelector(
-                conversion.transferOwnership.selector,
-                (address(0x2))
-            )
-        );
-
-        assertTrue(!ok, "Only the owner can change owner");
+        vm.prank(address(0x1));
+        vm.expectRevert("Ownable: caller is not the owner");
+        conversion.transferOwnership(address(0x1));
     }
 
     function test_EncodeStreamId() public {
