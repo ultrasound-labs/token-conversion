@@ -31,31 +31,35 @@ contract StreamConversion is Ownable {
     uint256 public constant EXPIRATION = 1706831999; // expiration of conversion (2024-02-01 23:59:59 GMT+0000)
 
     // structs
-    // @dev stream owner and startTime is encoded in streamId
+    // @dev uses 2 storage slots
     struct Stream {
+        address owner;
+        uint64 startTime;
         uint128 total;
         uint128 claimed;
     }
 
     // storage vars
-    mapping(bytes32 => Stream) public streams;
+    uint256 public streamIds; // counter keeping track of streams
+    mapping(uint256 => Stream) public streams;
 
     // events
     event Convert(
-        bytes32 indexed streamId,
+        uint256 indexed streamId,
         address indexed sender,
         address indexed recipient,
         uint256 amountIn,
         uint256 amountOut
     );
     event Withdraw(
-        bytes32 indexed streamId,
+        uint256 indexed streamId,
         address indexed recipient,
         uint256 amount
     );
     event UpdateStreamOwner(
-        bytes32 indexed streamId,
-        bytes32 indexed newStreamId
+        uint256 indexed streamId,
+        address indexed oldOwner,
+        address indexed newOwner
     );
 
     /// Instantiates a new converter contract with an owner
@@ -68,7 +72,7 @@ contract StreamConversion is Ownable {
     /// tokens claimable by `recipient` over one year.
     function convert(uint256 amount, address recipient)
         external
-        returns (bytes32 streamId)
+        returns (uint256 streamId)
     {
         // assert conversion is not expired
         if (block.timestamp > EXPIRATION) revert Conversion_Expired();
@@ -78,8 +82,10 @@ contract StreamConversion is Ownable {
         uint256 amountOut = amount.mul(WEI).div(RATE);
 
         // create new stream and increase stream counter
-        streamId = _encodeStreamId(recipient, uint64(block.timestamp));
+        streamId = streamIds++;
         streams[streamId] = Stream({
+            owner: recipient,
+            startTime: uint64(block.timestamp),
             total: uint128(amountOut), // safe bc BOND totalSupply is only 10**7
             claimed: 0
         });
@@ -91,39 +97,36 @@ contract StreamConversion is Ownable {
     }
 
     /// Withdraws claimable BOND tokens to `recipient`
-    function claim(bytes32 streamId) external returns (uint256 claimed) {
+    function claim(uint256 streamId) external returns (uint256 claimed) {
         Stream memory stream = streams[streamId];
-        (address recipient, uint64 startTime) = _decodeStreamId(streamId);
-        return _claim(stream, streamId, recipient, startTime);
+        return _claim(stream, streamId, stream.owner);
     }
 
     /// Withdraws claimable BOND tokens to `recipient`
-    function claimTo(bytes32 streamId, address recipient)
+    function claimTo(uint256 streamId, address recipient)
         external
         returns (uint256 claimed)
     {
         Stream memory stream = streams[streamId];
-        (address streamOwner, uint64 startTime) = _decodeStreamId(streamId);
 
         // check owner
-        if (msg.sender != streamOwner) revert Only_Stream_Owner();
+        if (msg.sender != stream.owner) revert Only_Stream_Owner();
 
         // don't claim to zero address
         if (recipient == address(0)) revert Invalid_Recipient();
 
         // withdraw claimable amount
-        return _claim(stream, streamId, recipient, startTime);
+        return _claim(stream, streamId, recipient);
     }
 
     /// Withdraws claimable BOND tokens to `recipient`
     function _claim(
         Stream memory stream,
-        bytes32 streamId,
-        address recipient,
-        uint64 startTime
+        uint256 streamId,
+        address recipient
     ) private returns (uint256 claimed) {
         // compute claimable amount and update stream
-        claimed = _claimableBalance(stream, startTime);
+        claimed = _claimableBalance(stream);
         stream.claimed += uint128(claimed);
         streams[streamId] = stream;
 
@@ -137,20 +140,17 @@ contract StreamConversion is Ownable {
     }
 
     /// Transfers stream to a new owner
-    function transferStreamOwnership(bytes32 streamId, address newOwner)
+    function transferStreamOwnership(uint256 streamId, address _owner)
         external
     {
-        Stream memory stream = streams[streamId];
-        (address owner, uint64 startTime) = _decodeStreamId(streamId);
+        Stream storage stream = streams[streamId];
 
         // only stream owner is allowed to update ownership
-        if (owner != msg.sender) revert Only_Stream_Owner();
+        if (stream.owner != msg.sender) revert Only_Stream_Owner();
 
-        // store stream with new streamId
-        bytes32 newStreamId = _encodeStreamId(newOwner, startTime);
-        delete streams[streamId];
-        streams[newStreamId] = stream;
-        emit UpdateStreamOwner(streamId, newStreamId);
+        // update ownership of the stream
+        stream.owner = _owner;
+        emit UpdateStreamOwner(streamId, msg.sender, _owner);
     }
 
     // Owner methods
@@ -163,33 +163,31 @@ contract StreamConversion is Ownable {
     // View methods
 
     /// Returns the details of a stream
-    function getStream(bytes32 streamId) external view returns (Stream memory) {
+    function getStream(uint256 streamId) external view returns (Stream memory) {
         return streams[streamId];
     }
 
     /// Returns the claimable balance for a stream
-    function claimableBalance(bytes32 streamId)
+    function claimableBalance(uint256 streamId)
         external
         view
         returns (uint256 claimable)
     {
-
-        (, uint64 startTime) = _decodeStreamId(streamId);
-        return _claimableBalance(streams[streamId], startTime);
+        return _claimableBalance(streams[streamId]);
     }
 
-    function _claimableBalance(Stream memory stream, uint64 startTime)
+    function _claimableBalance(Stream memory stream)
         private
         view
         returns (uint256 claimable)
     {
-        uint256 endTime = uint256(startTime).add(DURATION);
-        if (block.timestamp <= startTime) {
+        uint256 endTime = uint256(stream.startTime).add(DURATION);
+        if (block.timestamp <= stream.startTime) {
             claimable = 0;
         } else if (endTime <= block.timestamp) {
             claimable = stream.total.sub(stream.claimed);
         } else {
-            uint256 diffTime = block.timestamp.sub(startTime);
+            uint256 diffTime = block.timestamp.sub(stream.startTime);
             claimable = ((stream.total).mul(diffTime).div(DURATION)).sub(
                 stream.claimed
             );
@@ -197,62 +195,12 @@ contract StreamConversion is Ownable {
     }
 
     /// returns the total (remaining) balance (incl. claimable) for a stream
-    function totalBalance(bytes32 streamId)
+    function totalBalance(uint256 streamId)
         external
         view
         returns (uint256 total)
     {
         Stream storage stream = streams[streamId];
         return (stream.total).sub(stream.claimed);
-    }
-
-    /// @notice Encodes `owner` and `startTime` as `streamId`
-    /// @param owner Owner of the stream
-    /// @param startTime Stream startTime timestamp
-    /// @return streamId Identifier of the stream [owner, startTime]
-    function encodeStreamId(
-        address owner,
-        uint64 startTime
-    ) external pure returns (bytes32 streamId) {
-        return _encodeStreamId(owner, startTime);
-    }
-
-    function _encodeStreamId(
-        address owner,
-        uint64 startTime
-    ) private pure returns (bytes32 streamId) {
-        unchecked {
-            streamId = bytes32(
-                (uint256(uint160(owner)) << 96)
-                    + uint256(startTime)
-            );
-        }
-    }
-
-    /// @notice Decodes the `owner` and `startTime` from `streamId`
-    /// @param streamId bytes32 containing [owner, startTime]
-    /// @return owner Chainlink round id
-    /// @return startTime Timestamp of the Chainlink round
-        function decodeStreamId(bytes32 streamId)
-        external
-        pure
-        returns (
-            address owner,
-            uint64 startTime
-        )
-    {
-        return _decodeStreamId(streamId);
-    }
-
-    function _decodeStreamId(bytes32 streamId)
-        private
-        pure
-        returns (
-            address owner,
-            uint64 startTime
-        )
-    {
-        owner = address(uint160(uint256(streamId >> 96)));
-        startTime = uint64(uint256(streamId));
     }
 }
