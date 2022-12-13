@@ -7,11 +7,16 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-/// Errors
+// Errors
 error Conversion_Expired();
 error Insufficient_Reserves();
 error Only_Stream_Owner();
 error Invalid_Recipient();
+
+// Interfaces
+interface IERC20Burnable is IERC20 {
+    function burnFrom(address account, uint256 amount) external;
+}
 
 /// converts a token to another token where the conversion price is fixed and the output token is streamed to the
 /// recipient over a fixed duration.
@@ -21,13 +26,13 @@ contract StreamConversion is Ownable {
     using SafeMath for uint128;
 
     // constants
-    uint256 public constant WEI = 1e18;
+    uint256 public constant WAD = 1e18;
     address public constant FDT =
         address(0xEd1480d12bE41d92F36f5f7bDd88212E381A3677); // the token to deposit
     address public constant BOND =
         address(0x0391D2021f89DC339F60Fff84546EA23E337750f); // the token to stream
-    uint256 public constant RATE = 750 * WEI; // the amount of FDT that converts to 1 WEI of BOND
-    uint256 public constant DURATION = 365 * 86400; // the vesting duration (1 year)
+    uint256 public constant RATE = 750 * WAD; // the amount of FDT that converts to 1 WAD of BOND
+    uint256 public constant DURATION = 365 days; // the vesting duration (1 year)
     uint256 public constant EXPIRATION = 1706831999; // expiration of conversion (2024-02-01 23:59:59 GMT+0000)
 
     // structs
@@ -74,8 +79,8 @@ contract StreamConversion is Ownable {
         if (block.timestamp > EXPIRATION) revert Conversion_Expired();
 
         // compute stream amount
-        // @dev all amounts are in WEI precision
-        uint256 amountOut = amount.mul(WEI).div(RATE);
+        // @dev all amounts are in WAD precision
+        uint256 amountOut = amount.mul(WAD).div(RATE);
 
         // create new stream
         streamId = _encodeStreamId(recipient, uint64(block.timestamp));
@@ -85,8 +90,8 @@ contract StreamConversion is Ownable {
         });
 
         // burn deposited tokens
-        // @dev fails if sender doesn't hold enough FDT
-        IERC20(FDT).safeTransferFrom(msg.sender, address(0x0), amount);
+        // @dev reverts if insufficient allowance or balance
+        IERC20Burnable(FDT).burnFrom(msg.sender, amount);
         emit Convert(streamId, msg.sender, recipient, amount, amountOut);
     }
 
@@ -127,11 +132,8 @@ contract StreamConversion is Ownable {
         stream.claimed += uint128(claimed);
         streams[streamId] = stream;
 
-        // assert converter holds enough BOND tokens
-        if (IERC20(BOND).balanceOf(address(this)) < claimed)
-            revert Insufficient_Reserves();
-
         // withdraw claimable amount
+        // @dev reverts if insufficient balance
         IERC20(BOND).safeTransfer(recipient, claimed);
         emit Withdraw(streamId, recipient, claimed);
     }
@@ -139,6 +141,7 @@ contract StreamConversion is Ownable {
     /// Transfers stream to a new owner
     function transferStreamOwnership(bytes32 streamId, address newOwner)
         external
+        returns (bytes32 newStreamId)
     {
         Stream memory stream = streams[streamId];
         (address owner, uint64 startTime) = _decodeStreamId(streamId);
@@ -147,7 +150,7 @@ contract StreamConversion is Ownable {
         if (owner != msg.sender) revert Only_Stream_Owner();
 
         // store stream with new streamId
-        bytes32 newStreamId = _encodeStreamId(newOwner, startTime);
+        newStreamId = _encodeStreamId(newOwner, startTime);
         delete streams[streamId];
         streams[newStreamId] = stream;
         emit UpdateStreamOwner(streamId, newStreamId);
@@ -157,15 +160,11 @@ contract StreamConversion is Ownable {
 
     /// Withdraws `amount` of BOND to owner
     function withdraw(uint256 amount) external onlyOwner {
+        // @dev reverts if insufficient balance
         IERC20(BOND).safeTransfer(owner(), amount);
     }
 
     // View methods
-
-    /// Returns the details of a stream
-    function getStream(bytes32 streamId) external view returns (Stream memory) {
-        return streams[streamId];
-    }
 
     /// Returns the claimable balance for a stream
     function claimableBalance(bytes32 streamId)
@@ -173,7 +172,6 @@ contract StreamConversion is Ownable {
         view
         returns (uint256 claimable)
     {
-
         (, uint64 startTime) = _decodeStreamId(streamId);
         return _claimableBalance(streams[streamId], startTime);
     }
@@ -210,21 +208,22 @@ contract StreamConversion is Ownable {
     /// @param owner Owner of the stream
     /// @param startTime Stream startTime timestamp
     /// @return streamId Identifier of the stream [owner, startTime]
-    function encodeStreamId(
-        address owner,
-        uint64 startTime
-    ) external pure returns (bytes32 streamId) {
+    function encodeStreamId(address owner, uint64 startTime)
+        external
+        pure
+        returns (bytes32 streamId)
+    {
         return _encodeStreamId(owner, startTime);
     }
 
-    function _encodeStreamId(
-        address owner,
-        uint64 startTime
-    ) private pure returns (bytes32 streamId) {
+    function _encodeStreamId(address owner, uint64 startTime)
+        private
+        pure
+        returns (bytes32 streamId)
+    {
         unchecked {
             streamId = bytes32(
-                (uint256(uint160(owner)) << 96)
-                    + uint256(startTime)
+                (uint256(uint160(owner)) << 96) + uint256(startTime)
             );
         }
     }
@@ -233,13 +232,10 @@ contract StreamConversion is Ownable {
     /// @param streamId bytes32 containing [owner, startTime]
     /// @return owner Chainlink round id
     /// @return startTime Timestamp of the Chainlink round
-        function decodeStreamId(bytes32 streamId)
+    function decodeStreamId(bytes32 streamId)
         external
         pure
-        returns (
-            address owner,
-            uint64 startTime
-        )
+        returns (address owner, uint64 startTime)
     {
         return _decodeStreamId(streamId);
     }
@@ -247,10 +243,7 @@ contract StreamConversion is Ownable {
     function _decodeStreamId(bytes32 streamId)
         private
         pure
-        returns (
-            address owner,
-            uint64 startTime
-        )
+        returns (address owner, uint64 startTime)
     {
         owner = address(uint160(uint256(streamId >> 96)));
         startTime = uint64(uint256(streamId));

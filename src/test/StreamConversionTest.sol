@@ -4,6 +4,8 @@ pragma solidity ^0.8.0;
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
 
+import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
+
 import "./utils/Caller.sol";
 import "./utils/tokens/TokenERC20.sol";
 
@@ -12,19 +14,26 @@ import {StreamConversion} from "../StreamConversion.sol";
 contract StreamConversionTest is Test {
     StreamConversion private conversion;
     address private owner;
+    IERC20 public fdt = IERC20(0xEd1480d12bE41d92F36f5f7bDd88212E381A3677);
+    IERC20 public bond = IERC20(0x0391D2021f89DC339F60Fff84546EA23E337750f);
 
     function setUp() public {
+        // set up conversion contract
         owner = address(this);
-
         conversion = new StreamConversion(owner);
+        deal(address(bond), address(conversion), 1000 ether);
+
+        // set up testing account with fdt
+        deal(address(fdt), address(this), 75000 ether);
+        fdt.approve(address(conversion), type(uint256).max);
     }
 
-    function testCanChangeOwner() public {
+    function test_CanChangeOwner() public {
         conversion.transferOwnership(address(0x2));
         assertEq(conversion.owner(), address(0x2));
     }
 
-    function testOtherUsersCannotChangeOwner() public {
+    function test_OtherUsersCannotChangeOwner() public {
         Caller user = new Caller();
 
         (bool ok, ) = user.externalCall(
@@ -38,14 +47,100 @@ contract StreamConversionTest is Test {
         assertTrue(!ok, "Only the owner can change owner");
     }
 
-    function testEncodeStreamId() public {
+    function test_EncodeStreamId() public {
         address userEncoded = address(0x1);
         uint64 startTimeEncoded = 1669852800;
 
-        bytes32 streamId = conversion.encodeStreamId(userEncoded, startTimeEncoded);
-        (address userDecoded, uint64 startTimeDecoded) = conversion.decodeStreamId(streamId);
+        bytes32 streamId = conversion.encodeStreamId(
+            userEncoded,
+            startTimeEncoded
+        );
+        (address userDecoded, uint64 startTimeDecoded) = conversion
+            .decodeStreamId(streamId);
 
         assertEq(userDecoded, userEncoded);
         assertEq(startTimeDecoded, startTimeEncoded);
+    }
+
+    function test_Convert() public {
+        // 750 FDT is converted to 1 BOND
+        bytes32 streamId = conversion.convert(750 ether, address(this));
+        (uint128 total, uint128 claimed) = conversion.streams(streamId);
+
+        assertEq(total, 1 ether);
+        assertEq(claimed, 0);
+    }
+
+    function test_Claim() public {
+        // 75000 FDT is converted to 100 BOND claimable over 1 year
+        bytes32 streamId = conversion.convert(75000 ether, address(this));
+
+        // initial balance
+        assertEq(conversion.totalBalance(streamId), 100 ether);
+
+        // move block.timestamp by 73 days (1/5-th of vesting duration)
+        skip(73 days);
+
+        // balances pre/post claim
+        assertEq(conversion.claimableBalance(streamId), 20 ether);
+        conversion.claim(streamId);
+        assertEq(conversion.claimableBalance(streamId), 0);
+        assertEq(bond.balanceOf(address(this)), 20 ether);
+        assertEq(conversion.totalBalance(streamId), 80 ether);
+
+        // move block.timestamp by another 73 days
+        skip(73 days);
+
+        // balances pre/post claim
+        assertEq(conversion.claimableBalance(streamId), 20 ether);
+        conversion.claim(streamId);
+        assertEq(conversion.claimableBalance(streamId), 0);
+        assertEq(bond.balanceOf(address(this)), 40 ether);
+        assertEq(conversion.totalBalance(streamId), 60 ether);
+
+        // move block.timestamp by another 73 days
+        skip(73 days);
+
+        // balances pre/post claim
+        assertEq(conversion.claimableBalance(streamId), 20 ether);
+        conversion.claim(streamId);
+        assertEq(conversion.claimableBalance(streamId), 0);
+        assertEq(bond.balanceOf(address(this)), 60 ether);
+        assertEq(conversion.totalBalance(streamId), 40 ether);
+
+        // move block.timestamp by another 73 days
+        skip(73 days);
+
+        // balances pre/post claim
+        assertEq(conversion.claimableBalance(streamId), 20 ether);
+        conversion.claim(streamId);
+        assertEq(conversion.claimableBalance(streamId), 0);
+        assertEq(bond.balanceOf(address(this)), 80 ether);
+        assertEq(conversion.totalBalance(streamId), 20 ether);
+
+        // move block.timestamp by another 73 days
+        skip(73 days);
+
+        // balances pre/post claim
+        assertEq(conversion.claimableBalance(streamId), 20 ether);
+        conversion.claim(streamId);
+        assertEq(conversion.claimableBalance(streamId), 0);
+        assertEq(bond.balanceOf(address(this)), 100 ether);
+        assertEq(conversion.totalBalance(streamId), 0);
+    }
+
+    function test_TransferStreamOwnership() public {
+        // 75000 FDT is converted to 100 BOND claimable over 1 year
+        bytes32 streamId = conversion.convert(75000 ether, address(this));
+
+        // test contract is the initial stream owner
+        (address streamOwner, ) = conversion.decodeStreamId(streamId);
+        assertEq(streamOwner, address(this));
+
+        // transfer stream to new owner
+        address newOwner = address(0x1);
+        bytes32 newStreamId = conversion.transferStreamOwnership(streamId, newOwner);
+        (address newStreamOwner, ) = conversion.decodeStreamId(newStreamId);
+        assertEq(newStreamOwner, newOwner);
     }
 }
