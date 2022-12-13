@@ -31,13 +31,13 @@ contract StreamConversion is Ownable {
     uint256 public constant EXPIRATION = 1706831999; // expiration of conversion (2024-02-01 23:59:59 GMT+0000)
 
     // structs
-    // @dev stream owner and startTime is encoded in streamId
     struct Stream {
         uint128 total;
         uint128 claimed;
     }
 
     // storage vars
+    // @dev stream owner and startTime is encoded in streamId
     mapping(bytes32 => Stream) public streams;
 
     // events
@@ -77,7 +77,7 @@ contract StreamConversion is Ownable {
         // @dev all amounts are in WEI precision
         uint256 amountOut = amount.mul(WEI).div(RATE);
 
-        // create new stream and increase stream counter
+        // create new stream
         streamId = _encodeStreamId(recipient, uint64(block.timestamp));
         streams[streamId] = Stream({
             total: uint128(amountOut), // safe bc BOND totalSupply is only 10**7
