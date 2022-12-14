@@ -9,9 +9,9 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // Errors
 error Conversion_Expired();
-error Insufficient_Reserves();
 error Only_Stream_Owner();
 error Invalid_Recipient();
+error Invalid_Stream_StartTime();
 
 // Interfaces
 interface IERC20Burnable is IERC20 {
@@ -23,7 +23,6 @@ interface IERC20Burnable is IERC20 {
 contract StreamConversion is Ownable {
     using SafeERC20 for IERC20;
     using SafeMath for uint256;
-    using SafeMath for uint128;
 
     // constants
     uint256 public constant WAD = 1e18;
@@ -42,7 +41,7 @@ contract StreamConversion is Ownable {
     }
 
     // storage vars
-    // @dev stream owner and startTime is encoded in streamId
+    // stream owner and startTime is encoded in streamId
     mapping(bytes32 => Stream) public streams;
 
     // events
@@ -71,6 +70,7 @@ contract StreamConversion is Ownable {
 
     /// Burns `amount` of FDT tokens and creates a new stream of BOND
     /// tokens claimable by `recipient` over one year.
+    // TODO: check whether streamId already exists (two converts in 1 block)
     function convert(uint256 amount, address recipient)
         external
         returns (bytes32 streamId)
@@ -78,19 +78,22 @@ contract StreamConversion is Ownable {
         // assert conversion is not expired
         if (block.timestamp > EXPIRATION) revert Conversion_Expired();
 
+        // don't convert to zero address
+        if (recipient == address(0)) revert Invalid_Recipient();
+
         // compute stream amount
-        // @dev all amounts are in WAD precision
+        // all amounts are in WAD precision
         uint256 amountOut = amount.mul(WAD).div(RATE);
 
         // create new stream
-        streamId = _encodeStreamId(recipient, uint64(block.timestamp));
+        streamId = encodeStreamId(recipient, uint64(block.timestamp));
         streams[streamId] = Stream({
             total: uint128(amountOut), // safe bc BOND totalSupply is only 10**7
             claimed: 0
         });
 
         // burn deposited tokens
-        // @dev reverts if insufficient allowance or balance
+        // reverts if insufficient allowance or balance
         IERC20Burnable(FDT).burnFrom(msg.sender, amount);
         emit Convert(streamId, msg.sender, recipient, amount, amountOut);
     }
@@ -98,7 +101,7 @@ contract StreamConversion is Ownable {
     /// Withdraws claimable BOND tokens to `recipient`
     function claim(bytes32 streamId) external returns (uint256 claimed) {
         Stream memory stream = streams[streamId];
-        (address recipient, uint64 startTime) = _decodeStreamId(streamId);
+        (address recipient, uint64 startTime) = decodeStreamId(streamId);
         return _claim(stream, streamId, recipient, startTime);
     }
 
@@ -107,14 +110,14 @@ contract StreamConversion is Ownable {
         external
         returns (uint256 claimed)
     {
+        // don't claim to zero address
+        if (recipient == address(0)) revert Invalid_Recipient();
+
         Stream memory stream = streams[streamId];
-        (address streamOwner, uint64 startTime) = _decodeStreamId(streamId);
+        (address streamOwner, uint64 startTime) = decodeStreamId(streamId);
 
         // check owner
         if (msg.sender != streamOwner) revert Only_Stream_Owner();
-
-        // don't claim to zero address
-        if (recipient == address(0)) revert Invalid_Recipient();
 
         // withdraw claimable amount
         return _claim(stream, streamId, recipient, startTime);
@@ -129,28 +132,29 @@ contract StreamConversion is Ownable {
     ) private returns (uint256 claimed) {
         // compute claimable amount and update stream
         claimed = _claimableBalance(stream, startTime);
-        stream.claimed += uint128(claimed);
+        stream.claimed = uint128(uint256(stream.claimed).add(claimed));  // safe bc BOND totalSupply is only 10**7
         streams[streamId] = stream;
 
         // withdraw claimable amount
-        // @dev reverts if insufficient balance
+        //  reverts if insufficient balance
         IERC20(BOND).safeTransfer(recipient, claimed);
         emit Withdraw(streamId, recipient, claimed);
     }
 
     /// Transfers stream to a new owner
+    // TODO: check whether newStreamId already exists
     function transferStreamOwnership(bytes32 streamId, address newOwner)
         external
         returns (bytes32 newStreamId)
     {
         Stream memory stream = streams[streamId];
-        (address owner, uint64 startTime) = _decodeStreamId(streamId);
+        (address owner, uint64 startTime) = decodeStreamId(streamId);
 
         // only stream owner is allowed to update ownership
         if (owner != msg.sender) revert Only_Stream_Owner();
 
         // store stream with new streamId
-        newStreamId = _encodeStreamId(newOwner, startTime);
+        newStreamId = encodeStreamId(newOwner, startTime);
         delete streams[streamId];
         streams[newStreamId] = stream;
         emit UpdateStreamOwner(streamId, newStreamId);
@@ -159,8 +163,9 @@ contract StreamConversion is Ownable {
     // Owner methods
 
     /// Withdraws `amount` of BOND to owner
+    // TODO: should we allow this only after EXPIRATION?
     function withdraw(uint256 amount) external onlyOwner {
-        // @dev reverts if insufficient balance
+        // reverts if insufficient balance
         IERC20(BOND).safeTransfer(owner(), amount);
     }
 
@@ -172,7 +177,7 @@ contract StreamConversion is Ownable {
         view
         returns (uint256 claimable)
     {
-        (, uint64 startTime) = _decodeStreamId(streamId);
+        (, uint64 startTime) = decodeStreamId(streamId);
         return _claimableBalance(streams[streamId], startTime);
     }
 
@@ -183,25 +188,15 @@ contract StreamConversion is Ownable {
     {
         uint256 endTime = uint256(startTime).add(DURATION);
         if (block.timestamp <= startTime) {
-            claimable = 0;
+            revert Invalid_Stream_StartTime();
         } else if (endTime <= block.timestamp) {
-            claimable = stream.total.sub(stream.claimed);
+            claimable = uint256(stream.total).sub(stream.claimed);
         } else {
             uint256 diffTime = block.timestamp.sub(startTime);
-            claimable = ((stream.total).mul(diffTime).div(DURATION)).sub(
+            claimable = (uint256(stream.total).mul(diffTime).div(DURATION)).sub(
                 stream.claimed
             );
         }
-    }
-
-    /// returns the total (remaining) balance (incl. claimable) for a stream
-    function totalBalance(bytes32 streamId)
-        external
-        view
-        returns (uint256 total)
-    {
-        Stream storage stream = streams[streamId];
-        return (stream.total).sub(stream.claimed);
     }
 
     /// @notice Encodes `owner` and `startTime` as `streamId`
@@ -209,15 +204,7 @@ contract StreamConversion is Ownable {
     /// @param startTime Stream startTime timestamp
     /// @return streamId Identifier of the stream [owner, startTime]
     function encodeStreamId(address owner, uint64 startTime)
-        external
-        pure
-        returns (bytes32 streamId)
-    {
-        return _encodeStreamId(owner, startTime);
-    }
-
-    function _encodeStreamId(address owner, uint64 startTime)
-        private
+        public
         pure
         returns (bytes32 streamId)
     {
@@ -233,15 +220,7 @@ contract StreamConversion is Ownable {
     /// @return owner Chainlink round id
     /// @return startTime Timestamp of the Chainlink round
     function decodeStreamId(bytes32 streamId)
-        external
-        pure
-        returns (address owner, uint64 startTime)
-    {
-        return _decodeStreamId(streamId);
-    }
-
-    function _decodeStreamId(bytes32 streamId)
-        private
+        public
         pure
         returns (address owner, uint64 startTime)
     {

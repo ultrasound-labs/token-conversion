@@ -63,9 +63,10 @@ contract StreamConversionTest is Test {
     function test_Claim() public {
         // 75000 FDT is converted to 100 BOND claimable over 1 year
         bytes32 streamId = conversion.convert(75000 ether, address(this));
-
+        
         // initial balance
-        assertEq(conversion.totalBalance(streamId), 100 ether);
+        (uint128 total, uint128 claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 100 ether);
 
         // move block.timestamp by 73 days (1/5-th of vesting duration)
         skip(73 days);
@@ -75,7 +76,8 @@ contract StreamConversionTest is Test {
         conversion.claim(streamId);
         assertEq(conversion.claimableBalance(streamId), 0);
         assertEq(bond.balanceOf(address(this)), 20 ether);
-        assertEq(conversion.totalBalance(streamId), 80 ether);
+        (total, claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 80 ether);
 
         // move block.timestamp by another 73 days
         skip(73 days);
@@ -85,7 +87,8 @@ contract StreamConversionTest is Test {
         conversion.claim(streamId);
         assertEq(conversion.claimableBalance(streamId), 0);
         assertEq(bond.balanceOf(address(this)), 40 ether);
-        assertEq(conversion.totalBalance(streamId), 60 ether);
+        (total, claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 60 ether);
 
         // move block.timestamp by another 73 days
         skip(73 days);
@@ -95,7 +98,8 @@ contract StreamConversionTest is Test {
         conversion.claim(streamId);
         assertEq(conversion.claimableBalance(streamId), 0);
         assertEq(bond.balanceOf(address(this)), 60 ether);
-        assertEq(conversion.totalBalance(streamId), 40 ether);
+        (total, claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 40 ether);
 
         // move block.timestamp by another 73 days
         skip(73 days);
@@ -105,7 +109,8 @@ contract StreamConversionTest is Test {
         conversion.claim(streamId);
         assertEq(conversion.claimableBalance(streamId), 0);
         assertEq(bond.balanceOf(address(this)), 80 ether);
-        assertEq(conversion.totalBalance(streamId), 20 ether);
+        (total, claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 20 ether);
 
         // move block.timestamp by another 73 days
         skip(73 days);
@@ -115,7 +120,8 @@ contract StreamConversionTest is Test {
         conversion.claim(streamId);
         assertEq(conversion.claimableBalance(streamId), 0);
         assertEq(bond.balanceOf(address(this)), 100 ether);
-        assertEq(conversion.totalBalance(streamId), 0);
+        (total, claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 0 ether);
     }
 
     function test_TransferStreamOwnership() public {
