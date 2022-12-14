@@ -70,7 +70,6 @@ contract StreamConversion is Ownable {
 
     /// Burns `amount` of FDT tokens and creates a new stream of BOND
     /// tokens claimable by `recipient` over one year.
-    // TODO: check whether streamId already exists (two converts in 1 block)
     function convert(uint256 amount, address recipient)
         external
         returns (bytes32 streamId)
@@ -85,12 +84,11 @@ contract StreamConversion is Ownable {
         // all amounts are in WAD precision
         uint256 amountOut = amount.mul(WAD).div(RATE);
 
-        // create new stream
+        // create new stream or add to existing stream created in same block
         streamId = encodeStreamId(recipient, uint64(block.timestamp));
-        streams[streamId] = Stream({
-            total: uint128(amountOut), // safe bc BOND totalSupply is only 10**7
-            claimed: 0
-        });
+        Stream storage stream = streams[streamId];
+        // this is safe bc BOND totalSupply is only 10**7
+        stream.total = uint128(amountOut.add(stream.total));
 
         // burn deposited tokens
         // reverts if insufficient allowance or balance
@@ -132,7 +130,7 @@ contract StreamConversion is Ownable {
     ) private returns (uint256 claimed) {
         // compute claimable amount and update stream
         claimed = _claimableBalance(stream, startTime);
-        stream.claimed = uint128(uint256(stream.claimed).add(claimed));  // safe bc BOND totalSupply is only 10**7
+        stream.claimed = uint128(uint256(stream.claimed).add(claimed)); // safe bc BOND totalSupply is only 10**7
         streams[streamId] = stream;
 
         // withdraw claimable amount
@@ -142,7 +140,6 @@ contract StreamConversion is Ownable {
     }
 
     /// Transfers stream to a new owner
-    // TODO: check whether newStreamId already exists
     function transferStreamOwnership(bytes32 streamId, address newOwner)
         external
         returns (bytes32 newStreamId)
@@ -153,17 +150,22 @@ contract StreamConversion is Ownable {
         // only stream owner is allowed to update ownership
         if (owner != msg.sender) revert Only_Stream_Owner();
 
-        // store stream with new streamId
+        // store stream with new streamId or add to existing stream
         newStreamId = encodeStreamId(newOwner, startTime);
+        Stream memory newStream = streams[newStreamId];
+        newStream.total = uint128(uint256(newStream.total).add(stream.total));
+        newStream.claimed = uint128(
+            uint256(newStream.claimed).add(stream.claimed)
+        );
+        streams[newStreamId] = newStream;
         delete streams[streamId];
-        streams[newStreamId] = stream;
         emit UpdateStreamOwner(streamId, newStreamId);
     }
 
     // Owner methods
 
     /// Withdraws `amount` of BOND to owner
-    // TODO: should we allow this only after EXPIRATION?
+    // TODO: should we allow withdrawing BOND by owner?
     function withdraw(uint256 amount) external onlyOwner {
         // reverts if insufficient balance
         IERC20(BOND).safeTransfer(owner(), amount);
@@ -194,8 +196,8 @@ contract StreamConversion is Ownable {
         } else {
             uint256 diffTime = block.timestamp.sub(startTime);
             claimable = (uint256(stream.total).mul(diffTime).div(DURATION)).sub(
-                stream.claimed
-            );
+                    stream.claimed
+                );
         }
     }
 

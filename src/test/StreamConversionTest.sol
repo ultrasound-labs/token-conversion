@@ -63,7 +63,7 @@ contract StreamConversionTest is Test {
     function test_Claim() public {
         // 75000 FDT is converted to 100 BOND claimable over 1 year
         bytes32 streamId = conversion.convert(75000 ether, address(this));
-        
+
         // initial balance
         (uint128 total, uint128 claimed) = conversion.streams(streamId);
         assertEq(total - claimed, 100 ether);
@@ -134,7 +134,10 @@ contract StreamConversionTest is Test {
 
         // transfer stream to new owner
         address newOwner = address(0x1);
-        bytes32 newStreamId = conversion.transferStreamOwnership(streamId, newOwner);
+        bytes32 newStreamId = conversion.transferStreamOwnership(
+            streamId,
+            newOwner
+        );
         (address newStreamOwner, ) = conversion.decodeStreamId(newStreamId);
         assertEq(newStreamOwner, newOwner);
     }
