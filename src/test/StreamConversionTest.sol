@@ -40,7 +40,7 @@ contract StreamConversionTest is Test {
         address userEncoded = address(0x1);
         uint64 startTimeEncoded = 1669852800;
 
-        bytes32 streamId = conversion.encodeStreamId(
+        uint256 streamId = conversion.encodeStreamId(
             userEncoded,
             startTimeEncoded
         );
@@ -53,7 +53,7 @@ contract StreamConversionTest is Test {
 
     function test_Convert() public {
         // 750 FDT is converted to 1 BOND
-        bytes32 streamId = conversion.convert(750 ether, address(this));
+        uint256 streamId = conversion.convert(750 ether, address(this));
         (uint128 total, uint128 claimed) = conversion.streams(streamId);
 
         assertEq(total, 1 ether);
@@ -62,7 +62,7 @@ contract StreamConversionTest is Test {
 
     function test_Claim() public {
         // 75000 FDT is converted to 100 BOND claimable over 1 year
-        bytes32 streamId = conversion.convert(75000 ether, address(this));
+        uint256 streamId = conversion.convert(75000 ether, address(this));
 
         // initial balance
         (uint128 total, uint128 claimed) = conversion.streams(streamId);
@@ -126,7 +126,7 @@ contract StreamConversionTest is Test {
 
     function test_TransferStreamOwnership() public {
         // 75000 FDT is converted to 100 BOND claimable over 1 year
-        bytes32 streamId = conversion.convert(75000 ether, address(this));
+        uint256 streamId = conversion.convert(75000 ether, address(this));
 
         // test contract is the initial stream owner
         (address streamOwner, ) = conversion.decodeStreamId(streamId);
@@ -134,7 +134,7 @@ contract StreamConversionTest is Test {
 
         // transfer stream to new owner
         address newOwner = address(0x1);
-        bytes32 newStreamId = conversion.transferStreamOwnership(
+        uint256 newStreamId = conversion.transferStreamOwnership(
             streamId,
             newOwner
         );
