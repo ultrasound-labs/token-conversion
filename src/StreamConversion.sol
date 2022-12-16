@@ -90,10 +90,10 @@ contract StreamConversion is Ownable {
     }
 
     /// Withdraws claimable BOND tokens to `recipient`
+    // TODO: do we want to support public claim for owner?
     function claim(uint256 streamId) external returns (uint256 claimed) {
         Stream memory stream = streams[streamId];
         (address recipient, uint64 startTime) = decodeStreamId(streamId);
-        if (recipient != msg.sender) revert Invalid_Recipient();
         return _claim(stream, streamId, recipient, startTime);
     }
 
@@ -102,9 +102,6 @@ contract StreamConversion is Ownable {
         external
         returns (uint256 claimed)
     {
-        // don't claim to zero address
-        if (recipient == address(0)) revert Invalid_Recipient();
-
         Stream memory stream = streams[streamId];
         (address streamOwner, uint64 startTime) = decodeStreamId(streamId);
 
@@ -124,11 +121,11 @@ contract StreamConversion is Ownable {
     ) private returns (uint256 claimed) {
         // compute claimable amount and update stream
         claimed = _claimableBalance(stream, startTime);
-        stream.claimed = uint128(stream.claimed + claimed); // safe bc BOND totalSupply is only 10**7
+        stream.claimed = uint128(stream.claimed + claimed);
         streams[streamId] = stream;
 
         // withdraw claimable amount
-        //  reverts if insufficient balance
+        // reverts if insufficient balance
         IERC20(BOND).transfer(recipient, claimed);
         emit Withdraw(streamId, recipient, claimed);
     }
@@ -208,7 +205,7 @@ contract StreamConversion is Ownable {
     }
 
     /// @notice Decodes the `owner` and `startTime` from `streamId`
-    /// @param streamId bytes32 containing [streamOwner, startTime]
+    /// @param streamId bytes32 containing a stream's [owner, startTime]
     /// @return owner owner extracted from `streamId`
     /// @return startTime startTime extracted from `streamId`
     function decodeStreamId(uint256 streamId)
