@@ -4,6 +4,10 @@ on:
   - push
   - pull_request
 
+env:
+    ETH_NODE: ${{ secrets.ETH_RPC_URL }}
+    RPC_ON: yes
+
 jobs:
   lint:
     runs-on: ubuntu-latest

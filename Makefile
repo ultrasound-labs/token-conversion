@@ -11,7 +11,7 @@ install-deps	:; yarn install --frozen-lockfile
 build         	:; forge build
 xclean        	:; forge clean
 lint          	:; yarn run lint
-test          	:; forge test
-test-gasreport 	:; forge test --gas-report
+test            :; forge test --fork-url ${ETH_RPC_URL}
+test-gasreport 	:; forge test --gas-report --fork-url ${ETH_RPC_URL}
 test-fork       :; forge test --gas-report --fork-url ${ETH_RPC_URL}
-watch		  	:; forge test --watch src/ 
+watch		  	:; forge test --watch src/ --fork-url ${ETH_RPC_URL}

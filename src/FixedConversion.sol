@@ -16,28 +16,28 @@ interface IERC20Burnable is IERC20 {
     function burnFrom(address account, uint256 amount) external;
 }
 
-/// converts a token to another token where the conversion price is fixed and the output token is streamed to the
+/// Converts a token to another token where the conversion price is fixed and the output token is streamed to the
 /// recipient over a fixed duration.
-contract StreamConversion is Ownable {
+contract FixedConversion is Ownable {
 
-    // constants
+    // Constants
     address public constant FDT = 0xEd1480d12bE41d92F36f5f7bDd88212E381A3677; // the token to deposit
     address public constant BOND = 0x0391D2021f89DC339F60Fff84546EA23E337750f; // the token to stream
     uint256 public constant RATE = 750; // the amount of FDT that converts to 1 WAD of BOND
     uint256 public constant DURATION = 365 days; // the vesting duration (1 year)
     uint256 public constant EXPIRATION = 1706831999; // expiration of conversion (2024-02-01 23:59:59 GMT+0000)
 
-    // structs
+    // Structs
     struct Stream {
         uint128 total;
         uint128 claimed;
     }
 
-    // storage vars
-    // stream owner and startTime is encoded in streamId
+    // Storage vars
+    // Stream owner and startTime is encoded in streamId
     mapping(uint256 => Stream) public streams;
 
-    // events
+    // Events
     event Convert(
         uint256 indexed streamId,
         address indexed sender,
