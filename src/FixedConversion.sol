@@ -19,7 +19,6 @@ interface IERC20Burnable is IERC20 {
 /// Converts a token to another token where the conversion price is fixed and the output token is streamed to the
 /// recipient over a fixed duration.
 contract FixedConversion is Ownable {
-
     // Constants
     address public constant FDT = 0xEd1480d12bE41d92F36f5f7bDd88212E381A3677; // the token to deposit
     address public constant BOND = 0x0391D2021f89DC339F60Fff84546EA23E337750f; // the token to stream
@@ -91,10 +90,7 @@ contract FixedConversion is Ownable {
 
     /// Withdraws claimable BOND tokens to the stream's `owner`
     /// @dev Reverts if not called by the stream's `owner`
-    function claim(uint256 streamId)
-        external
-        returns (uint256 claimed)
-    {
+    function claim(uint256 streamId) external returns (uint256 claimed) {
         Stream memory stream = streams[streamId];
         (address streamOwner, uint64 startTime) = decodeStreamId(streamId);
 
@@ -193,7 +189,7 @@ contract FixedConversion is Ownable {
             claimable = stream.total - stream.claimed;
         } else {
             uint256 diffTime = block.timestamp - startTime;
-            claimable = stream.total * diffTime / DURATION - stream.claimed;
+            claimable = (stream.total * diffTime) / DURATION - stream.claimed;
         }
     }
 
@@ -223,5 +219,4 @@ contract FixedConversion is Ownable {
         owner = address(uint160(uint256(streamId >> 96)));
         startTime = uint64(streamId);
     }
-
 }
