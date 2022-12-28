@@ -89,36 +89,43 @@ contract StreamConversion is Ownable {
         emit Convert(streamId, msg.sender, recipient, amount, amountOut);
     }
 
-    /// Withdraws claimable BOND tokens to `recipient`
-    // TODO: do we want to support public claim for owner?
-    function claim(uint256 streamId) external returns (uint256 claimed) {
-        Stream memory stream = streams[streamId];
-        (address recipient, uint64 startTime) = decodeStreamId(streamId);
-        return _claim(stream, streamId, recipient, startTime);
-    }
-
-    /// Withdraws claimable BOND tokens to `recipient`
-    function claimTo(uint256 streamId, address recipient)
+    /// Withdraws claimable BOND tokens to the stream's `owner`
+    /// @dev Reverts if not called by the stream's `owner`
+    function claim(uint256 streamId)
         external
         returns (uint256 claimed)
     {
         Stream memory stream = streams[streamId];
         (address streamOwner, uint64 startTime) = decodeStreamId(streamId);
 
-        // check owner
-        if (msg.sender != streamOwner) revert Only_Stream_Owner();
+        // withdraw claimable amount
+        return _claim(stream, streamId, streamOwner, streamOwner, startTime);
+    }
+
+    /// Withdraws claimable BOND tokens to a designated `recipient`
+    /// @dev Reverts if not called by the stream's `owner`
+    function claim(uint256 streamId, address recipient)
+        external
+        returns (uint256 claimed)
+    {
+        Stream memory stream = streams[streamId];
+        (address streamOwner, uint64 startTime) = decodeStreamId(streamId);
 
         // withdraw claimable amount
-        return _claim(stream, streamId, recipient, startTime);
+        return _claim(stream, streamId, streamOwner, recipient, startTime);
     }
 
     /// Withdraws claimable BOND tokens to `recipient`
     function _claim(
         Stream memory stream,
         uint256 streamId,
+        address streamOwner,
         address recipient,
         uint64 startTime
     ) private returns (uint256 claimed) {
+        // check owner
+        if (msg.sender != streamOwner) revert Only_Stream_Owner();
+
         // compute claimable amount and update stream
         claimed = _claimableBalance(stream, startTime);
         stream.claimed = uint128(stream.claimed + claimed);
