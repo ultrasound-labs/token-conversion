@@ -18,7 +18,7 @@ interface IERC20Burnable is IERC20 {
 
 /// Converts a token to another token where the conversion price is fixed and the output token is streamed to the
 /// recipient over a fixed duration.
-contract FixedConversion is Ownable {
+contract TokenConversion is Ownable {
     // Constants
     address public constant FDT = 0xEd1480d12bE41d92F36f5f7bDd88212E381A3677; // the token to deposit
     address public constant BOND = 0x0391D2021f89DC339F60Fff84546EA23E337750f; // the token to stream

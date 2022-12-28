@@ -6,10 +6,10 @@ import "forge-std/console.sol";
 
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
-import {FixedConversion} from "../FixedConversion.sol";
+import {TokenConversion} from "../TokenConversion.sol";
 
-contract FixedConversionTest is Test {
-    FixedConversion private conversion;
+contract TokenConversionTest is Test {
+    TokenConversion private conversion;
     address private owner;
     IERC20 public fdt = IERC20(0xEd1480d12bE41d92F36f5f7bDd88212E381A3677);
     IERC20 public bond = IERC20(0x0391D2021f89DC339F60Fff84546EA23E337750f);
@@ -17,7 +17,7 @@ contract FixedConversionTest is Test {
     function setUp() public {
         // set up conversion contract
         owner = address(this);
-        conversion = new FixedConversion(owner);
+        conversion = new TokenConversion(owner);
         deal(address(bond), address(conversion), 1000 ether);
 
         // set up testing account with fdt
