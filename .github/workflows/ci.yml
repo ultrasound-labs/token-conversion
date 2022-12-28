@@ -5,7 +5,7 @@ on:
   - pull_request
 
 env:
-    ETH_NODE: ${{ secrets.ETH_RPC_URL }}
+    ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
     RPC_ON: yes
 
 jobs:
