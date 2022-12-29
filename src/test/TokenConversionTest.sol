@@ -13,11 +13,21 @@ contract TokenConversionTest is Test {
     address private owner;
     IERC20 public fdt = IERC20(0xEd1480d12bE41d92F36f5f7bDd88212E381A3677);
     IERC20 public bond = IERC20(0x0391D2021f89DC339F60Fff84546EA23E337750f);
+    uint256 public rate = 750; // the amount of TOKENIN that converts to 1 WAD of TOKENOUT
+    uint256 public duration = 365 days; // the vesting duration (1 year)
+    uint256 public expiration = 1706831999; // expiration of conversion (2024-02-01 23:59:59 GMT+0000)
 
     function setUp() public {
         // set up conversion contract
         owner = address(this);
-        conversion = new TokenConversion(owner);
+        conversion = new TokenConversion(
+            address(fdt),
+            address(bond),
+            rate,
+            duration,
+            expiration,
+            owner
+        );
         deal(address(bond), address(conversion), 1000 ether);
 
         // set up testing account with fdt

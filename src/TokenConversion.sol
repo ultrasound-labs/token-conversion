@@ -3,6 +3,7 @@
 pragma solidity 0.8.17;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 // Errors
@@ -10,6 +11,7 @@ error Conversion_Expired();
 error Only_Stream_Owner();
 error Invalid_Recipient();
 error Invalid_Stream_StartTime();
+error Invalid_Token_Decimals();
 
 // Interfaces
 interface IERC20Burnable is IERC20 {
@@ -20,11 +22,11 @@ interface IERC20Burnable is IERC20 {
 /// recipient over a fixed duration.
 contract TokenConversion is Ownable {
     // Constants
-    address public constant FDT = 0xEd1480d12bE41d92F36f5f7bDd88212E381A3677; // the token to deposit
-    address public constant BOND = 0x0391D2021f89DC339F60Fff84546EA23E337750f; // the token to stream
-    uint256 public constant RATE = 750; // the amount of FDT that converts to 1 WAD of BOND
-    uint256 public constant DURATION = 365 days; // the vesting duration (1 year)
-    uint256 public constant EXPIRATION = 1706831999; // expiration of conversion (2024-02-01 23:59:59 GMT+0000)
+    address public immutable tokenIn; // the token to deposit
+    address public immutable tokenOut; // the token to stream
+    uint256 public immutable rate; // the amount of tokenIn that converts to 1 WAD of tokenOut
+    uint256 public immutable duration; // the vesting duration
+    uint256 public immutable expiration; // expiration of the conversion program
 
     // Structs
     struct Stream {
@@ -55,12 +57,32 @@ contract TokenConversion is Ownable {
     );
 
     /// Instantiates a new converter contract with an owner
-    /// @dev owner is able to withdraw BOND from the conversion contract
-    constructor(address _owner) {
+    /// @dev owner is able to withdraw tokenOut from the conversion contract
+    constructor(
+        address _tokenIn,
+        address _tokenOut,
+        uint256 _rate,
+        uint256 _duration,
+        uint256 _expiration,
+        address _owner
+    ) {
+        // initialize conversion terms
+        tokenIn = _tokenIn;
+        tokenOut = _tokenOut;
+        rate = _rate;
+        duration = _duration;
+        expiration = _expiration;
+
+        // Sanity checks
+        if (IERC20Metadata(tokenIn).decimals() != 18)
+            revert Invalid_Token_Decimals();
+        if (IERC20Metadata(tokenOut).decimals() != 18)
+            revert Invalid_Token_Decimals();
+
         transferOwnership(_owner);
     }
 
-    /// Burns `amount` of FDT tokens and creates a new stream of BOND
+    /// Burns `amount` of tokenIn tokens and creates a new stream of tokenOut
     /// tokens claimable by `recipient` over one year
     /// @param amount The amount of in-tokens to convert
     /// @param recipient The recipient of the stream of out-tokens
@@ -70,28 +92,28 @@ contract TokenConversion is Ownable {
         returns (uint256 streamId)
     {
         // assert conversion is not expired
-        if (block.timestamp > EXPIRATION) revert Conversion_Expired();
+        if (block.timestamp > expiration) revert Conversion_Expired();
 
         // don't convert to zero address
         if (recipient == address(0)) revert Invalid_Recipient();
 
         // compute stream amount
         // all amounts are in WAD precision
-        uint256 amountOut = amount / RATE;
+        uint256 amountOut = amount / rate;
 
         // create new stream or add to existing stream created in same block
         streamId = encodeStreamId(recipient, uint64(block.timestamp));
         Stream storage stream = streams[streamId];
-        // this is safe bc BOND totalSupply is only 10**7
+        // this is safe bc tokenOut totalSupply is only 10**7
         stream.total = uint128(amountOut + stream.total);
 
         // burn deposited tokens
         // reverts if insufficient allowance or balance
-        IERC20Burnable(FDT).burnFrom(msg.sender, amount);
+        IERC20Burnable(tokenIn).burnFrom(msg.sender, amount);
         emit Convert(streamId, msg.sender, recipient, amount, amountOut);
     }
 
-    /// Withdraws claimable BOND tokens to the stream's `owner`
+    /// Withdraws claimable tokenOut tokens to the stream's `owner`
     /// @param streamId The encoded identifier of the stream to claim from
     /// @return claimed The amount of tokens claimed
     /// @dev Reverts if not called by the stream's `owner`
@@ -103,7 +125,7 @@ contract TokenConversion is Ownable {
         return _claim(stream, streamId, streamOwner, streamOwner, startTime);
     }
 
-    /// Withdraws claimable BOND tokens to a designated `recipient`
+    /// Withdraws claimable tokenOut tokens to a designated `recipient`
     /// @param streamId The encoded identifier of the stream to claim from
     /// @param recipient The recipient of the claimed token amount
     /// @return claimed The amount of tokens claimed
@@ -137,7 +159,7 @@ contract TokenConversion is Ownable {
 
         // withdraw claimable amount
         // reverts if insufficient balance
-        IERC20(BOND).transfer(recipient, claimed);
+        IERC20(tokenOut).transfer(recipient, claimed);
         emit Withdraw(streamId, recipient, claimed);
     }
 
@@ -170,7 +192,7 @@ contract TokenConversion is Ownable {
 
     // Owner methods
 
-    /// Withdraws `amount` of BOND to owner
+    /// Withdraws `amount` of tokenOut to owner
     /// @param amount The amount of tokens to withdraw from the conversion contract
     /// @dev Reverts if not called by the contract's `owner`
     /// @dev This is used in two scenarios:
@@ -178,7 +200,7 @@ contract TokenConversion is Ownable {
     /// - Recover unconverted funds
     function withdraw(uint256 amount) external onlyOwner {
         // reverts if insufficient balance
-        IERC20(BOND).transfer(owner(), amount);
+        IERC20(tokenOut).transfer(owner(), amount);
     }
 
     // View methods
@@ -201,14 +223,14 @@ contract TokenConversion is Ownable {
         view
         returns (uint256 claimable)
     {
-        uint256 endTime = startTime + DURATION;
+        uint256 endTime = startTime + duration;
         if (block.timestamp <= startTime) {
             revert Invalid_Stream_StartTime();
         } else if (endTime <= block.timestamp) {
             claimable = stream.total - stream.claimed;
         } else {
             uint256 diffTime = block.timestamp - startTime;
-            claimable = (stream.total * diffTime) / DURATION - stream.claimed;
+            claimable = (stream.total * diffTime) / duration - stream.claimed;
         }
     }
 
