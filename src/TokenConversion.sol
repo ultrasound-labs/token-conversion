@@ -61,7 +61,10 @@ contract TokenConversion is Ownable {
     }
 
     /// Burns `amount` of FDT tokens and creates a new stream of BOND
-    /// tokens claimable by `recipient` over one year.
+    /// tokens claimable by `recipient` over one year
+    /// @param amount The amount of in-tokens to convert
+    /// @param recipient The recipient of the stream of out-tokens
+    /// @return streamId Encoded identifier of the stream [owner, startTime]
     function convert(uint256 amount, address recipient)
         external
         returns (uint256 streamId)
@@ -89,6 +92,8 @@ contract TokenConversion is Ownable {
     }
 
     /// Withdraws claimable BOND tokens to the stream's `owner`
+    /// @param streamId The encoded identifier of the stream to claim from
+    /// @return claimed The amount of tokens claimed
     /// @dev Reverts if not called by the stream's `owner`
     function claim(uint256 streamId) external returns (uint256 claimed) {
         Stream memory stream = streams[streamId];
@@ -99,6 +104,9 @@ contract TokenConversion is Ownable {
     }
 
     /// Withdraws claimable BOND tokens to a designated `recipient`
+    /// @param streamId The encoded identifier of the stream to claim from
+    /// @param recipient The recipient of the claimed token amount
+    /// @return claimed The amount of tokens claimed
     /// @dev Reverts if not called by the stream's `owner`
     function claim(uint256 streamId, address recipient)
         external
@@ -111,7 +119,7 @@ contract TokenConversion is Ownable {
         return _claim(stream, streamId, streamOwner, recipient, startTime);
     }
 
-    /// Withdraws claimable BOND tokens to `recipient`
+    // Implementation of the claim feature
     function _claim(
         Stream memory stream,
         uint256 streamId,
@@ -134,6 +142,10 @@ contract TokenConversion is Ownable {
     }
 
     /// Transfers stream to a new owner
+    /// @param streamId The encoded identifier of the stream to transfer to a new owner
+    /// @param newOwner The new owner of the stream
+    /// @return newStreamId New identifier of the stream [newOwner, startTime]
+    /// @dev Reverts if not called by the stream's `owner`
     function transferStreamOwnership(uint256 streamId, address newOwner)
         external
         returns (uint256 newStreamId)
@@ -159,7 +171,11 @@ contract TokenConversion is Ownable {
     // Owner methods
 
     /// Withdraws `amount` of BOND to owner
-    // TODO: should we allow withdrawing BOND by owner?
+    /// @param amount The amount of tokens to withdraw from the conversion contract
+    /// @dev Reverts if not called by the contract's `owner`
+    /// @dev This is used in two scenarios:
+    /// - Emergency such as a vulnerability in the contract
+    /// - Recover unconverted funds
     function withdraw(uint256 amount) external onlyOwner {
         // reverts if insufficient balance
         IERC20(BOND).transfer(owner(), amount);
@@ -168,6 +184,8 @@ contract TokenConversion is Ownable {
     // View methods
 
     /// Returns the claimable balance for a stream
+    /// @param streamId The encoded identifier of the stream to view `claimableBalance` of
+    /// @return claimable The amount of tokens claimable
     function claimableBalance(uint256 streamId)
         external
         view
@@ -177,6 +195,7 @@ contract TokenConversion is Ownable {
         return _claimableBalance(streams[streamId], startTime);
     }
 
+    // Implementation of claimableBalance query
     function _claimableBalance(Stream memory stream, uint64 startTime)
         private
         view
@@ -196,7 +215,7 @@ contract TokenConversion is Ownable {
     /// @notice Encodes `owner` and `startTime` as `streamId`
     /// @param owner Owner of the stream
     /// @param startTime Stream startTime timestamp
-    /// @return streamId Identifier of the stream [owner, startTime]
+    /// @return streamId Encoded identifier of the stream [owner, startTime]
     function encodeStreamId(address owner, uint64 startTime)
         public
         pure
@@ -208,7 +227,7 @@ contract TokenConversion is Ownable {
     }
 
     /// @notice Decodes the `owner` and `startTime` from `streamId`
-    /// @param streamId bytes32 containing a stream's [owner, startTime]
+    /// @param streamId The encoded stream identifier consisting of [owner, startTime]
     /// @return owner owner extracted from `streamId`
     /// @return startTime startTime extracted from `streamId`
     function decodeStreamId(uint256 streamId)

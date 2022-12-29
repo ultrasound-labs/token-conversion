@@ -6,7 +6,7 @@ import "forge-std/console.sol";
 
 import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 
-import {TokenConversion} from "../TokenConversion.sol";
+import {TokenConversion, Only_Stream_Owner} from "../TokenConversion.sol";
 
 contract TokenConversionTest is Test {
     TokenConversion private conversion;
@@ -122,6 +122,54 @@ contract TokenConversionTest is Test {
         assertEq(bond.balanceOf(address(this)), 100 ether);
         (total, claimed) = conversion.streams(streamId);
         assertEq(total - claimed, 0 ether);
+    }
+
+    function test_ClaimToDesignatedRecipient() public {
+        // 75000 FDT is converted to 100 BOND claimable over 1 year
+        uint256 streamId = conversion.convert(75000 ether, address(this));
+        address recipient = address(0x1);
+
+        // initial balance
+        (uint128 total, uint128 claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 100 ether);
+
+        // move block.timestamp by 219 days (3/5-th of vesting duration)
+        skip(219 days);
+
+        // balances pre/post claim
+        assertEq(conversion.claimableBalance(streamId), 60 ether);
+        conversion.claim(streamId, recipient);
+        assertEq(conversion.claimableBalance(streamId), 0);
+        assertEq(bond.balanceOf(address(this)), 0 ether);
+        assertEq(bond.balanceOf(recipient), 60 ether);
+        (total, claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 40 ether);
+
+        // move block.timestamp by another 146 days (2/5-th of vesting duration)
+        skip(146 days);
+
+        // balances pre/post claim
+        assertEq(conversion.claimableBalance(streamId), 40 ether);
+        conversion.claim(streamId, recipient);
+        assertEq(conversion.claimableBalance(streamId), 0);
+        assertEq(bond.balanceOf(address(this)), 0 ether);
+        assertEq(bond.balanceOf(recipient), 100 ether);
+        (total, claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 0 ether);
+    }
+
+    function test_OtherUsersCannotClaim() public {
+        // 75000 FDT is converted to 100 BOND claimable over 1 year
+        uint256 streamId = conversion.convert(75000 ether, address(this));
+
+        // stream exists with correct balance
+        (uint128 total, uint128 claimed) = conversion.streams(streamId);
+        assertEq(total - claimed, 100 ether);
+
+        // claiming from non-stream owner fails
+        vm.prank(address(0x1));
+        vm.expectRevert(Only_Stream_Owner.selector);
+        conversion.claim(streamId);
     }
 
     function test_TransferStreamOwnership() public {
